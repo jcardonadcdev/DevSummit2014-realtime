@@ -1,0 +1,85 @@
+html, body {
+  height: 100%; width: 100%;
+  margin: 0; padding: 0;
+}
+body{
+  background-color: #fff; overflow:hidden;
+  font-family: sans-serif;
+}
+h3{
+  margin-top:0px;
+  margin-bottom: 5px;
+}
+h4{
+  margin-top:0px;
+  margin-bottom: 2px;
+}
+.vehicle{
+  margin-top: 2px;
+  padding: 2px;
+  background-color: #fffafa;
+  min-height: 50px;
+  position: relative;
+}
+.vehicle span{
+  font-size: large;
+  margin: 2px;
+  font-weight:bold;
+}
+.ident-button{
+  float: right;
+  margin-right: 10px;
+  font-size: x-small;
+}
+.alert-container{
+  padding: 2px;
+}
+.notification{
+  padding: 5px;
+  margin: 2px;
+  background-color: #ffff00;
+}
+.notification span{
+  font-size: large;
+  margin: 2px;
+  font-weight:bold;
+}
+.notification p{
+  margin: 1px;
+  font-size: small;
+}
+.warning{
+  padding: 5px;
+  margin: 2px;
+  background-color: #ffa500;
+}
+.warning span{
+  font-size: large;
+  margin: 2px;
+  font-weight:bold;
+}
+.warning p{
+  margin: 1px;
+  font-size: small;
+}
+.urgent{
+  padding: 5px;
+  margin: 2px;
+  background-color: #f08080;
+}
+.urgent span{
+  font-size: large;
+  margin: 2px;
+  font-weight:bold;
+}
+.urgent p{
+  margin: 1px;
+  font-size: small;
+}
+.smallButton{
+  font-size: x-small;
+}
+#map {
+  width: 80%;
+  height: 100%;
+}

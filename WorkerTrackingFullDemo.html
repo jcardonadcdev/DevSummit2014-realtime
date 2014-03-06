@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Worker Tracking</title>
+    <link rel="stylesheet" href="http://js.arcgis.com/3.8/js/esri/css/esri.css">
+    <link rel="stylesheet" href="css/worker.css" />
+    <script src="http://js.arcgis.com/3.8/"></script>
+    <script>
+      require(["esri/map",
+        "esri/TimeExtent",
+        "esri/graphic",
+        "esri/layers/StreamLayer",
+        "esri/layers/FeatureLayer",
+        "esri/layers/ArcGISDynamicMapServiceLayer",
+        "esri/InfoTemplate",
+        "esri/symbols/SimpleMarkerSymbol",
+        "esri/symbols/PictureMarkerSymbol",
+        "esri/symbols/TextSymbol",
+        "esri/symbols/Font",
+        "esri/symbols/SimpleLineSymbol",
+        "esri/renderers/SimpleRenderer",
+        "esri/renderers/ClassBreaksRenderer",
+        "esri/renderers/UniqueValueRenderer",
+        "dojo/_base/Color",
+        "dojo/dom",
+        "dojo/on",
+        "dojo/domReady!"
+      ], function(Map, TimeExtent, Graphic, StreamLayer, FeatureLayer, ArcGISDynamicMapServiceLayer, InfoTemplate, SimpleMarkerSymbol, PictureMarkerSymbol, TextSymbol, Font, SimpleLineSymbol, SimpleRenderer, ClassBreaksRenderer, UniqueValueRenderer, Color, dom, on){
+
+          var map,
+            trackedIds = {},
+            historyId,
+            streamLayerIncident, streamLayerWorker,
+            featureLayerWorker,
+            workerRenderer;
+
+          map = new Map("map",{
+            basemap: "gray",
+            center: [-81.1, 37.9],
+            zoom: 9
+          });
+
+          map.on("load", function(){
+            //add the historic feature layer and the quarantine zone map service layer
+            addZoneAndHistoricLayers();
+
+            //add alert layer
+            addIncidentStreamLayer();
+
+            //add worker tracking stream layer
+            addWorkerStreamLayer();
+          });
+
+          function addZoneAndHistoricLayers(){
+            var mapLayerUrlZones = "http://ursus.esri.com:6080/arcgis/rest/services/QuarantineRings/MapServer",
+              mapLayerZones = new ArcGISDynamicMapServiceLayer(mapLayerUrlZones);
+
+            mapLayerZones.on("load", function(){
+              map.addLayer(mapLayerZones);
+            });
+
+            var featureLayerUrlWorker = "http://ursus.esri.com:6080/arcgis/rest/services/AidWorkersFS/FeatureServer/1";
+
+            featureLayerWorker = new FeatureLayer(featureLayerUrlWorker, {
+              mode: FeatureLayer.MODE_SNAPSHOT
+            });
+            featureLayerWorker.on("load", function(){
+              workerRenderer = featureLayerWorker.renderer;
+              featureLayerWorker.setDefinitionExpression("0=1");
+              map.addLayer(featureLayerWorker);
+            });
+          }
+
+          function addWorkerStreamLayer(){
+            trackedIds = {};
+
+            var url = "ws://ursus.esri.com:6180/workerlocations";
+
+            var layerDefinition = {
+              "geometryType": "esriGeometryPoint",
+              "timeInfo": {
+                "startTimeField": "StartTime",
+                "endTimeField": null,
+                "trackIdField": "Name",
+              },
+              "fields": [
+                {
+                  name: "ObjectId",
+                  type: "esriFieldTypeOID",
+                  alias: "ObjectId"
+                },
+                {
+                  name: "Id",
+                  type: "esriFieldTypeLong",
+                  alias: "Id"
+                },
+                {
+                  name: "Name",
+                  type: "esriFieldTypeString",
+                  alias: "Name"
+                },
+                {
+                  name: "StartTime",
+                  type: "esriFieldTypeString",
+                  alias: "StartTime"
+                },
+                {
+                  name: "EndTime",
+                  type: "esriFieldTypeDate",
+                  alias: "EndTime"
+                },
+                {
+                  name: "Lat",
+                  type: "esriFieldTypeDouble",
+                  alias: "Lat"
+                },
+                {
+                  name: "Lon",
+                  type: "esriFieldTypeDouble",
+                  alias: "Lon"
+                },
+                {
+                  name: "Sort",
+                  type: "esriFieldTypeLong",
+                  alias: "Sort"
+                },
+                {
+                  name: "UniqueId",
+                  type: "esriFieldTypeString",
+                  alias: "UniqueId"
+                }
+              ]
+            };
+
+            //Make FeatureCollection to define layer without using url
+            var featureCollection = {
+              "layerDefinition": layerDefinition,
+              "featureSet": null
+            };
+
+            streamLayerWorker = new StreamLayer(featureCollection, {
+              socketUrl: url,
+              purgeOptions: { displayCount: 500 },
+              infoTemplate: new InfoTemplate("Name: ${Name}", "Time: ${StartTime} " )
+            });
+
+            streamLayerWorker.setRenderer( makeWorkerRenderer() );
+
+            streamLayerWorker.on("graphic-add", processGraphicAddWorker);
+
+            streamLayerWorker.on("connect", function(){
+              dojo.byId("txtWsUrlWorker").style.backgroundColor = "#00ff00";
+            });
+
+            streamLayerWorker.on("disconnect", function(){
+              dojo.byId("txtWsUrlWorker").style.backgroundColor = "#ff0000";
+            });
+
+            map.addLayer( streamLayerWorker );
+          }
+
+          function addIncidentStreamLayer(){
+            var url = "ws://ursus.esri.com:6180/workerincident";
+
+            var layerDefinition = {
+              "geometryType": "esriGeometryPoint",
+              "timeInfo": {
+                "startTimeField": "timestamp",
+                "endTimeField": null,
+                "trackIdField": "trackId"
+              },
+              "fields": [
+                {
+                  name: "ObjectId",
+                  type: "esriFieldTypeOID",
+                  alias: "ObjectId"
+                },
+                {
+                  name: "id",
+                  type: "esriFieldTypeString",
+                  alias: "id"
+                },
+                {
+                  name: "name",
+                  type: "esriFieldTypeString",
+                  alias: "name"
+                },
+                {
+                  name: "timestamp",
+                  type: "esriFieldTypeDate",
+                  alias: "timestamp"
+                },
+                {
+                  name: "type",
+                  type: "esriFieldTypeString",
+                  alias: "type"
+                },
+                {
+                  name: "status",
+                  type: "esriFieldTypeString",
+                  alias: "status"
+                },
+                {
+                  name: "alertType",
+                  type: "esriFieldTypeString",
+                  alias: "alertType"
+                },
+                {
+                  name: "description",
+                  type: "esriFieldTypeString",
+                  alias: "description"
+                },
+                {
+                  name: "trackId",
+                  type: "esriFieldTypeString",
+                  alias: "trackId"
+                }
+              ]
+            };
+
+            var featureCollection = {
+              "layerDefinition": layerDefinition,
+              "featureSet": null
+            };
+
+            streamLayerIncident = new StreamLayer(featureCollection, {
+              socketUrl: url,
+              purgeOptions: { displayCount: 500 },
+              infoTemplate: new InfoTemplate("Name: ${trackId}", "Description: ${name} ")
+            });
+
+            //Make renderer and apply it to StreamLayer
+            var alertRendererJson = {
+              type: "uniqueValue",
+              field1: "alertType",
+              fieldDelimiter: ", ",
+              defaultSymbol: null,
+              defaultLabel: null,
+              uniqueValueInfos: []
+            };
+
+            var alertRenderer = new UniqueValueRenderer(alertRendererJson);
+
+            var marker = new PictureMarkerSymbol("assets/demo_biohazard_yellow.jpg",15,15);
+            alertRenderer.addValue("Urgent", marker);
+
+            marker = new PictureMarkerSymbol("assets/demo_biohazard_red.gif",20,20);
+            alertRenderer.addValue("Warning", marker);
+
+            streamLayerIncident.setRenderer( alertRenderer );
+
+            streamLayerIncident.on("connect", function(){
+              dojo.byId("txtWsUrlIncident").style.backgroundColor = "#00ff00";
+            });
+
+            streamLayerIncident.on("disconnect", function(){
+              dojo.byId("txtWsUrlIncident").style.backgroundColor = "#ff0000";
+            });
+
+            streamLayerIncident.on("graphic-add", processGraphicAddIncident);
+
+            //console.log("Adding incident layer");
+            map.addLayer( streamLayerIncident );
+          }
+
+          /*
+           * Event handlers for stream layers
+           */
+          function processGraphicAddWorker(g){
+            //console.log(g);
+
+            var workerid,
+              trackIdField,
+              sym,
+              graphic = g.graphic;
+
+
+            if (! streamLayerWorker.timeInfo || ! streamLayerWorker.timeInfo.trackIdField){
+              return false;
+            }
+
+            trackIdField = streamLayerWorker.timeInfo.trackIdField;
+            workerid = graphic.attributes[trackIdField];
+
+            if (! trackedIds[workerid]){
+              trackedIds[workerid] = {};
+              makeDriverDiv(workerid);
+
+              /*var font = new Font("10pt", Font.STYLE_ITALIC,
+                Font.VARIANT_NORMAL, Font.WEIGHT_BOLD,"Courier");
+              var text = new TextSymbol(workerid, font, new Color([0,0,139]));
+              text.setAlign(TextSymbol.ALIGN_START);
+              text.setOffset(10,2);
+              var tGraphic = new Graphic(graphic.geometry, text);
+              console.log("text: ", tGraphic);
+              map.graphics.add(tGraphic);
+              trackedIds[workerid].label = tGraphic;*/
+            }
+
+            if (trackedIds[workerid].current){
+              streamLayerWorker.remove(trackedIds[workerid].current);
+              delete(trackedIds[workerid].current);
+            }
+
+            if (! trackedIds[workerid].label){
+              var font = new Font("10pt", Font.STYLE_ITALIC,
+                Font.VARIANT_NORMAL, Font.WEIGHT_BOLD,"Courier");
+              var text = new TextSymbol(workerid, font, new Color([0,0,139]));
+              text.setAlign(TextSymbol.ALIGN_START);
+              text.setOffset(10,2);
+              var tGraphic = new Graphic(graphic.geometry, text);
+              console.log("text: ", tGraphic);
+              map.graphics.add(tGraphic);
+              trackedIds[workerid].label = tGraphic;
+            }
+
+
+            /*else{
+              if (trackedIds[workerid].current){
+                streamLayerWorker.remove(trackedIds[workerid].current);
+                delete(trackedIds[workerid].current);
+              }
+            }*/
+            trackedIds[workerid].current = graphic;
+            if (trackedIds[workerid].label){
+              trackedIds[workerid].label.setGeometry(graphic.geometry);
+            }
+            if (trackedIds[workerid].ident){
+              trackedIds[workerid].ident.setGeometry(graphic.geometry);
+            }
+          }
+
+          function processGraphicAddIncident(g){
+            var workerid,
+              trackIdField,
+              ts,
+              timeField,
+              sym,
+              alertType,
+              graphic = g.graphic;
+
+            if (! streamLayerIncident.timeInfo || ! streamLayerIncident.timeInfo.trackIdField){
+              return false;
+            }
+
+            trackIdField = streamLayerIncident.timeInfo.trackIdField;
+            workerid = graphic.attributes[trackIdField];
+
+            if (! trackedIds[workerid]){
+              //trackedIds[workerid] = {};
+              return false;
+            }
+
+            timeField = streamLayerIncident.timeInfo.startTimeField;
+            ts = graphic.attributes[timeField];
+
+            alertType = graphic.attributes.alertType;
+
+            if (alertType === "Urgent" && (! trackedIds[workerid] || ! trackedIds[workerid].Warning)){
+              console.log("Not adding urgent");
+              streamLayerIncident.remove(graphic);
+              return false;
+            }
+
+            if (trackedIds[workerid] && trackedIds[workerid][alertType]){
+              streamLayerIncident.remove(trackedIds[workerid][alertType]);
+              delete(trackedIds[workerid][alertType]);
+            }
+            trackedIds[workerid][alertType] = graphic;
+            makeWarningDiv(graphic);
+          }
+
+
+          function makeDriverDiv(workerid){
+            var div1,
+              div2,
+              tb2;
+
+            if (dojo.byId(workerid)){
+              return false;
+            }
+
+            div1 = dojo.create("div", {"id": workerid, "class": "vehicle", "innerHTML": "<span>" + workerid + "</span>"});
+            tb2 = dojo.create("input", {type: "button", id: "cmdhighlight-" + workerid, "class": "ident-button", value: "Identify Worker"});
+            dojo.place(tb2, div1);
+
+            dojo.connect(tb2, "onclick", function(){
+              toggleWorkerIdent(workerid);
+            });
+
+            dojo.place(div1, "workers", "after");
+          }
+
+          function toggleWorkerIdent(workerid){
+            var font,
+              textSymbol,
+              identGraphic,
+              buttonText,
+              button;
+
+            if (trackedIds[workerid].ident){
+              buttonText = "Identify Worker";
+              map.graphics.remove(trackedIds[workerid].ident);
+              delete(trackedIds[workerid].ident);
+            }
+            else{
+              var fillcolor = new Color([0, 255, 255, 0.3]),
+                outlinecolor = new Color([0, 255, 255]),
+                outline = new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID, outlinecolor, 3),
+                symbol;
+
+              symbol = new SimpleMarkerSymbol(SimpleMarkerSymbol.STYLE_CIRCLE, 25, outline, fillcolor);
+              identGraphic = new Graphic(trackedIds[workerid].current.geometry, symbol);
+              map.graphics.add(identGraphic);
+              trackedIds[workerid].ident = identGraphic;
+
+              /*font = new Font("10pt", Font.STYLE_ITALIC,
+                Font.VARIANT_NORMAL, Font.WEIGHT_BOLD,"Courier");
+              textSymbol = new TextSymbol(workerid, font, new Color([0,0,139]));
+              textSymbol.setAlign(TextSymbol.ALIGN_START);
+              textSymbol.setOffset(5,2);
+              labelGraphic = new Graphic(trackedIds[workerid].current.geometry, textSymbol);
+              map.graphics.add(labelGraphic);
+              trackedIds[workerid].label = labelGraphic;*/
+              buttonText = "Remove Identify";
+            }
+
+            button = dojo.byId("cmdhighlight-" + workerid);
+            dojo.attr(button, "value", buttonText);
+          }
+
+          function makeWarningDiv(incidentGraphic){
+            if (! streamLayerIncident.timeInfo || ! streamLayerIncident.timeInfo.trackIdField || ! streamLayerIncident.timeInfo.startTimeField){
+              return false;
+            }
+
+            var workerid,
+              ts,
+              desc,
+              alertType,
+              trackIdField,
+              timeField,
+              div1,
+              alertdiv,
+              tb;
+
+            //console.log("Attributes: ", g.graphic.attributes);
+            trackIdField = streamLayerIncident.timeInfo.trackIdField;
+            timeField = streamLayerIncident.timeInfo.startTimeField;
+            workerid = incidentGraphic.attributes[trackIdField];
+            ts = incidentGraphic.attributes[timeField];
+            desc = incidentGraphic.attributes.name;
+            alertType = incidentGraphic.attributes.alertType;
+
+            div1 = dojo.byId(workerid);
+            if (! div1){
+              makeDriverDiv(workerid);
+            }
+            div1 = dojo.byId(workerid);
+            dojo.replaceClass(workerid, alertType.toLowerCase());
+
+            alertdiv = dojo.byId("alert-" + workerid);
+            if (alertdiv){
+              dojo.destroy(alertdiv);
+            }
+
+            //alertdiv = dojo.create("div", {"id": "alert-" + workerid, "class": alertType.toLowerCase(), "innerHTML": "<h4>" + alertType + ": " + workerid + "</h4><p>" + workerid + " " + desc + "</p>"});
+            alertdiv = dojo.create("div", {"id": "alert-" + workerid, "innerHTML": "<p>" + desc + "</p>"});
+            tb = dojo.create("input", {type: "button", id: "cmdhistory-" + workerid, "class": "smallButton", value: "Show History"});
+            //var tb2 = dojo.create("input", {type: "button", id: "cmdhighlight-" + workerid, "class": "smallButton", value: "Ident"});
+
+            if (alertType === "Urgent"){
+              dojo.place(tb, alertdiv);
+              dojo.connect(tb, "onclick", function(){
+                if (dojo.attr(this, "value") === "Clear History"){
+                  dojo.attr(this, "value", "Show History");
+                  setLayerDef(null);
+                  historyId = null;
+                }
+                else{
+                  if(historyId){
+                    var cmd = dojo.byId("cmdhistory-" + historyId);
+                    if (cmd){
+                      dojo.attr(cmd, "value", "Show History");
+                    }
+                  }
+                  dojo.attr(this, "value", "Clear History");
+                  historyId = workerid;
+                  setLayerDef(workerid);
+                }
+              });
+            }
+            dojo.place(alertdiv, div1);
+          }
+
+          function setLayerDef(name){
+            var trackIdField,
+              timeField,
+              def,
+              msStart,
+              msEnd,
+              dtStart,
+              dtEnd,
+              strtsStart = null,
+              strtsEnd = null;
+            //console.log("In layer def");
+            if (! streamLayerWorker.timeInfo || ! streamLayerWorker.timeInfo.trackIdField || ! streamLayerWorker.timeInfo.startTimeField){
+              return false;
+            }
+
+            if (! name){
+              def = "0=1";
+            }
+            else{
+              trackIdField = streamLayerWorker.timeInfo.trackIdField;
+              timeField = streamLayerWorker.timeInfo.startTimeField;
+
+              if (trackedIds[name].Warning){
+                msStart = trackedIds[name].Warning.attributes.timestamp;
+              }
+              if (trackedIds[name].Urgent){
+                msEnd = trackedIds[name].Urgent.attributes.timestamp;
+              }
+
+              dtStart = msStart ? new Date(msStart) : null;
+              dtEnd = msEnd ? new Date(msEnd) : null;
+
+              if (dtEnd){
+                strtsEnd = dtEnd.getUTCFullYear() + "-" + (dtEnd.getUTCMonth() + 1) + "-" + dtEnd.getUTCDate()
+                  + " " + dtEnd.getUTCHours() + ":" + dtEnd.getUTCMinutes() + ":" + dtEnd.getUTCSeconds();
+              }
+              if (dtStart){
+                strtsStart = dtStart.getUTCFullYear() + "-" + (dtStart.getUTCMonth() + 1) + "-" + dtStart.getUTCDate()
+                  + " " + dtStart.getUTCHours() + ":" + dtStart.getUTCMinutes() + ":" + dtStart.getUTCSeconds();
+              }
+
+              def = trackIdField + " = '" + name + "'";
+              if (strtsStart){
+                def += " AND " + timeField + " > timestamp '" + strtsStart + "'";
+              }
+              if (strtsEnd){
+                def += " AND " + timeField + " < timestamp '" + strtsEnd + "'";
+              }
+            }
+
+            featureLayerWorker.setDefinitionExpression(def);
+          }
+
+          function highlightWarning(trackId){
+
+          }
+
+          function makeWorkerRenderer(){
+            var fillcolor = new Color([5, 112, 176, 0.8]),
+            outlinecolor = new Color([255, 255, 255]),
+            outline = new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID, outlinecolor, 1),
+            symbol,
+            obsrenderer;
+
+            symbol = new SimpleMarkerSymbol(SimpleMarkerSymbol.STYLE_DIAMOND, 20, outline, fillcolor);
+            obsRenderer = new esri.renderer.SimpleRenderer(symbol);
+            return obsRenderer;
+          }
+        });
+    </script>
+  </head>
+  <body>
+      <div id="leftPane" style="float: left; width: 20%">
+        <div id="trackStatus" style="padding: 5px; margin: 2px; background-color: #dcdcdc">
+          <h3>Feeds</h3>
+          <span id="txtWsUrlWorker" style="margin-left: 10px; width:75px"><span value="Workers">Workers</span></span>
+          <span id="txtWsUrlIncident" style="margin-left: 10px; width:75px"><span value="Warnings">Warnings</span></span>
+        </div>
+        <div style="padding: 5px; background-color: #dcdcdc; margin: 2px; min-height: 150px">
+          <h3 id="workers">Workers</h3>
+        </div>
+      </div>
+      <div id="map"></div>
+  </body>
+
+</html>
