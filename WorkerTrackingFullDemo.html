@@ -34,6 +34,7 @@
             featureLayerWorker,
             workerRenderer;
 
+          //make map with gray canvas basemap
           map = new Map("map",{
             basemap: "gray",
             center: [-81.1, 37.9],
@@ -44,22 +45,27 @@
             //add the historic feature layer and the quarantine zone map service layer
             addZoneAndHistoricLayers();
 
-            //add alert layer
+            //add incident stream layer
             addIncidentStreamLayer();
 
             //add worker tracking stream layer
             addWorkerStreamLayer();
           });
 
+          /*
+           * Adds FeatureLayer to show worker track points and dynamic map layer to show quarantine zones
+           */
           function addZoneAndHistoricLayers(){
-            var mapLayerUrlZones = "http://ursus.esri.com:6080/arcgis/rest/services/QuarantineRings/MapServer",
-              mapLayerZones = new ArcGISDynamicMapServiceLayer(mapLayerUrlZones);
+            var mapLayerUrlZones = "http://localhost:6080/arcgis/rest/services/QuarantineRings/MapServer",
+              mapLayerZones = new ArcGISDynamicMapServiceLayer(mapLayerUrlZones, {
+                opacity: 0.7
+              });
 
             mapLayerZones.on("load", function(){
               map.addLayer(mapLayerZones);
             });
 
-            var featureLayerUrlWorker = "http://ursus.esri.com:6080/arcgis/rest/services/AidWorkersFS/FeatureServer/1";
+            var featureLayerUrlWorker = "http://localhost:6080/arcgis/rest/services/AidWorkersFS/FeatureServer/1";
 
             featureLayerWorker = new FeatureLayer(featureLayerUrlWorker, {
               mode: FeatureLayer.MODE_SNAPSHOT
@@ -71,11 +77,17 @@
             });
           }
 
+          /********************************************************************************
+           *
+           * Functions for creating Worker stream layer and handling events on the layer
+           *
+           ********************************************************************************/
           function addWorkerStreamLayer(){
             trackedIds = {};
 
-            var url = "ws://ursus.esri.com:6180/workerlocations";
+            var url = "ws://localhost:6180/workerlocations";
 
+            //define schema of data and time info
             var layerDefinition = {
               "geometryType": "esriGeometryPoint",
               "timeInfo": {
@@ -144,8 +156,10 @@
               infoTemplate: new InfoTemplate("Name: ${Name}", "Time: ${StartTime} " )
             });
 
+            //set renderer
             streamLayerWorker.setRenderer( makeWorkerRenderer() );
 
+            //handle stream layer events
             streamLayerWorker.on("graphic-add", processGraphicAddWorker);
 
             streamLayerWorker.on("connect", function(){
@@ -156,9 +170,93 @@
               dojo.byId("txtWsUrlWorker").style.backgroundColor = "#ff0000";
             });
 
+            //add layer to map to initiate connection to GeoEvent Processor
             map.addLayer( streamLayerWorker );
           }
 
+          //This function gets called when streamLayerWorker emits 'graphic-add' event
+          function processGraphicAddWorker(g){
+            var workerid,
+              trackIdField,
+              graphic = g.graphic;
+
+
+            if (! streamLayerWorker.timeInfo || ! streamLayerWorker.timeInfo.trackIdField){
+              return false;
+            }
+
+            //get trackId of graphic
+            trackIdField = streamLayerWorker.timeInfo.trackIdField;
+            workerid = graphic.attributes[trackIdField];
+
+            /*
+             * Add div to left panel to show worker name if we have not started tracking worker.
+             * Also add worker to key/value object used to keep reference to incidents associated with worker
+             *  and reference to current position of worker
+             */
+            if (! trackedIds[workerid]){
+              trackedIds[workerid] = {};
+              makeDriverDiv(workerid);
+            }
+
+            //remove graphic that shows old position of worker
+            if (trackedIds[workerid].current){
+              streamLayerWorker.remove(trackedIds[workerid].current);
+              delete(trackedIds[workerid].current);
+            }
+
+            //Add label for worker if it does not exist.
+            if (! trackedIds[workerid].label){
+              var font = new Font("10pt", Font.STYLE_ITALIC,
+                Font.VARIANT_NORMAL, Font.WEIGHT_BOLD,"Courier");
+              var text = new TextSymbol(workerid, font, new Color([0,0,139]));
+              text.setAlign(TextSymbol.ALIGN_START);
+              text.setOffset(10,2);
+              var tGraphic = new Graphic(graphic.geometry, text);
+              map.graphics.add(tGraphic);
+              trackedIds[workerid].label = tGraphic;
+            }
+
+            /*
+             * Add reference to current worker position graphic to the key/value object
+             * Update label geometry to new position of worker
+             * If worker has ident property set, update the position of the halo that is highlighting the worker position
+             */
+            //
+            trackedIds[workerid].current = graphic;
+            if (trackedIds[workerid].label){
+              trackedIds[workerid].label.setGeometry(graphic.geometry);
+            }
+            if (trackedIds[workerid].ident){
+              trackedIds[workerid].ident.setGeometry(graphic.geometry);
+            }
+          }
+
+          function makeDriverDiv(workerid){
+            var div1,
+              div2,
+              tb2;
+
+            if (dojo.byId(workerid)){
+              return false;
+            }
+
+            div1 = dojo.create("div", {"id": workerid, "class": "vehicle", "innerHTML": "<span>" + workerid + "</span>"});
+            tb2 = dojo.create("input", {type: "button", id: "cmdhighlight-" + workerid, "class": "ident-button", value: "Identify Worker"});
+            dojo.place(tb2, div1);
+
+            dojo.connect(tb2, "onclick", function(){
+              toggleWorkerIdent(workerid);
+            });
+
+            dojo.place(div1, "workers", "after");
+          }
+
+          /**********************************************************************************
+           *
+           * Functions for creating Incident stream layer and handling events on the layer
+           *
+           **********************************************************************************/
           function addIncidentStreamLayer(){
             var url = "ws://ursus.esri.com:6180/workerincident";
 
@@ -229,7 +327,7 @@
               infoTemplate: new InfoTemplate("Name: ${trackId}", "Description: ${name} ")
             });
 
-            //Make renderer and apply it to StreamLayer
+            //Make renderer and apply it to StreamLayer. Use unique value renderer with picture marker symbols
             var alertRendererJson = {
               type: "uniqueValue",
               field1: "alertType",
@@ -241,7 +339,7 @@
 
             var alertRenderer = new UniqueValueRenderer(alertRendererJson);
 
-            var marker = new PictureMarkerSymbol("assets/demo_biohazard_yellow.jpg",15,15);
+            var marker = new PictureMarkerSymbol("assets/demo_biohazard_yellow.jpg",20,20);
             alertRenderer.addValue("Urgent", marker);
 
             marker = new PictureMarkerSymbol("assets/demo_biohazard_red.gif",20,20);
@@ -259,83 +357,13 @@
 
             streamLayerIncident.on("graphic-add", processGraphicAddIncident);
 
-            //console.log("Adding incident layer");
             map.addLayer( streamLayerIncident );
           }
 
-          /*
-           * Event handlers for stream layers
-           */
-          function processGraphicAddWorker(g){
-            //console.log(g);
-
-            var workerid,
-              trackIdField,
-              sym,
-              graphic = g.graphic;
-
-
-            if (! streamLayerWorker.timeInfo || ! streamLayerWorker.timeInfo.trackIdField){
-              return false;
-            }
-
-            trackIdField = streamLayerWorker.timeInfo.trackIdField;
-            workerid = graphic.attributes[trackIdField];
-
-            if (! trackedIds[workerid]){
-              trackedIds[workerid] = {};
-              makeDriverDiv(workerid);
-
-              /*var font = new Font("10pt", Font.STYLE_ITALIC,
-                Font.VARIANT_NORMAL, Font.WEIGHT_BOLD,"Courier");
-              var text = new TextSymbol(workerid, font, new Color([0,0,139]));
-              text.setAlign(TextSymbol.ALIGN_START);
-              text.setOffset(10,2);
-              var tGraphic = new Graphic(graphic.geometry, text);
-              console.log("text: ", tGraphic);
-              map.graphics.add(tGraphic);
-              trackedIds[workerid].label = tGraphic;*/
-            }
-
-            if (trackedIds[workerid].current){
-              streamLayerWorker.remove(trackedIds[workerid].current);
-              delete(trackedIds[workerid].current);
-            }
-
-            if (! trackedIds[workerid].label){
-              var font = new Font("10pt", Font.STYLE_ITALIC,
-                Font.VARIANT_NORMAL, Font.WEIGHT_BOLD,"Courier");
-              var text = new TextSymbol(workerid, font, new Color([0,0,139]));
-              text.setAlign(TextSymbol.ALIGN_START);
-              text.setOffset(10,2);
-              var tGraphic = new Graphic(graphic.geometry, text);
-              console.log("text: ", tGraphic);
-              map.graphics.add(tGraphic);
-              trackedIds[workerid].label = tGraphic;
-            }
-
-
-            /*else{
-              if (trackedIds[workerid].current){
-                streamLayerWorker.remove(trackedIds[workerid].current);
-                delete(trackedIds[workerid].current);
-              }
-            }*/
-            trackedIds[workerid].current = graphic;
-            if (trackedIds[workerid].label){
-              trackedIds[workerid].label.setGeometry(graphic.geometry);
-            }
-            if (trackedIds[workerid].ident){
-              trackedIds[workerid].ident.setGeometry(graphic.geometry);
-            }
-          }
-
+          //This function gets called when streamLayerIncident emits 'graphic-add' event
           function processGraphicAddIncident(g){
             var workerid,
               trackIdField,
-              ts,
-              timeField,
-              sym,
               alertType,
               graphic = g.graphic;
 
@@ -347,86 +375,29 @@
             workerid = graphic.attributes[trackIdField];
 
             if (! trackedIds[workerid]){
-              //trackedIds[workerid] = {};
               return false;
             }
 
-            timeField = streamLayerIncident.timeInfo.startTimeField;
-            ts = graphic.attributes[timeField];
-
             alertType = graphic.attributes.alertType;
 
+            //NOTE: This is for demo - to make sure there is a Warning incident paired with the Urgent incident
             if (alertType === "Urgent" && (! trackedIds[workerid] || ! trackedIds[workerid].Warning)){
               console.log("Not adding urgent");
               streamLayerIncident.remove(graphic);
               return false;
             }
 
+            //only keep one of each incident type for each worker so map does not get cluttered
             if (trackedIds[workerid] && trackedIds[workerid][alertType]){
               streamLayerIncident.remove(trackedIds[workerid][alertType]);
               delete(trackedIds[workerid][alertType]);
             }
+
+            //add reference to incident to key/value object so can reference it later for showing worker track points
             trackedIds[workerid][alertType] = graphic;
+
+            //update div in left panel to show new incident info
             makeWarningDiv(graphic);
-          }
-
-
-          function makeDriverDiv(workerid){
-            var div1,
-              div2,
-              tb2;
-
-            if (dojo.byId(workerid)){
-              return false;
-            }
-
-            div1 = dojo.create("div", {"id": workerid, "class": "vehicle", "innerHTML": "<span>" + workerid + "</span>"});
-            tb2 = dojo.create("input", {type: "button", id: "cmdhighlight-" + workerid, "class": "ident-button", value: "Identify Worker"});
-            dojo.place(tb2, div1);
-
-            dojo.connect(tb2, "onclick", function(){
-              toggleWorkerIdent(workerid);
-            });
-
-            dojo.place(div1, "workers", "after");
-          }
-
-          function toggleWorkerIdent(workerid){
-            var font,
-              textSymbol,
-              identGraphic,
-              buttonText,
-              button;
-
-            if (trackedIds[workerid].ident){
-              buttonText = "Identify Worker";
-              map.graphics.remove(trackedIds[workerid].ident);
-              delete(trackedIds[workerid].ident);
-            }
-            else{
-              var fillcolor = new Color([0, 255, 255, 0.3]),
-                outlinecolor = new Color([0, 255, 255]),
-                outline = new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID, outlinecolor, 3),
-                symbol;
-
-              symbol = new SimpleMarkerSymbol(SimpleMarkerSymbol.STYLE_CIRCLE, 25, outline, fillcolor);
-              identGraphic = new Graphic(trackedIds[workerid].current.geometry, symbol);
-              map.graphics.add(identGraphic);
-              trackedIds[workerid].ident = identGraphic;
-
-              /*font = new Font("10pt", Font.STYLE_ITALIC,
-                Font.VARIANT_NORMAL, Font.WEIGHT_BOLD,"Courier");
-              textSymbol = new TextSymbol(workerid, font, new Color([0,0,139]));
-              textSymbol.setAlign(TextSymbol.ALIGN_START);
-              textSymbol.setOffset(5,2);
-              labelGraphic = new Graphic(trackedIds[workerid].current.geometry, textSymbol);
-              map.graphics.add(labelGraphic);
-              trackedIds[workerid].label = labelGraphic;*/
-              buttonText = "Remove Identify";
-            }
-
-            button = dojo.byId("cmdhighlight-" + workerid);
-            dojo.attr(button, "value", buttonText);
           }
 
           function makeWarningDiv(incidentGraphic){
@@ -444,7 +415,6 @@
               alertdiv,
               tb;
 
-            //console.log("Attributes: ", g.graphic.attributes);
             trackIdField = streamLayerIncident.timeInfo.trackIdField;
             timeField = streamLayerIncident.timeInfo.startTimeField;
             workerid = incidentGraphic.attributes[trackIdField];
@@ -464,10 +434,8 @@
               dojo.destroy(alertdiv);
             }
 
-            //alertdiv = dojo.create("div", {"id": "alert-" + workerid, "class": alertType.toLowerCase(), "innerHTML": "<h4>" + alertType + ": " + workerid + "</h4><p>" + workerid + " " + desc + "</p>"});
             alertdiv = dojo.create("div", {"id": "alert-" + workerid, "innerHTML": "<p>" + desc + "</p>"});
             tb = dojo.create("input", {type: "button", id: "cmdhistory-" + workerid, "class": "smallButton", value: "Show History"});
-            //var tb2 = dojo.create("input", {type: "button", id: "cmdhighlight-" + workerid, "class": "smallButton", value: "Ident"});
 
             if (alertType === "Urgent"){
               dojo.place(tb, alertdiv);
@@ -492,6 +460,40 @@
             }
             dojo.place(alertdiv, div1);
           }
+
+          /*
+           * Functions to show worker track history and to highlight a specific worker
+           */
+          function toggleWorkerIdent(workerid){
+            var font,
+              textSymbol,
+              identGraphic,
+              buttonText,
+              button;
+
+            if (trackedIds[workerid].ident){
+              buttonText = "Identify Worker";
+              map.graphics.remove(trackedIds[workerid].ident);
+              delete(trackedIds[workerid].ident);
+            }
+            else{
+              var fillcolor = new Color([0, 255, 255, 0.3]),
+                outlinecolor = new Color([0, 255, 255]),
+                outline = new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID, outlinecolor, 3),
+                symbol;
+
+              symbol = new SimpleMarkerSymbol(SimpleMarkerSymbol.STYLE_CIRCLE, 25, outline, fillcolor);
+              identGraphic = new Graphic(trackedIds[workerid].current.geometry, symbol);
+              map.graphics.add(identGraphic);
+              trackedIds[workerid].ident = identGraphic;
+              buttonText = "Remove Identify";
+            }
+
+            button = dojo.byId("cmdhighlight-" + workerid);
+            dojo.attr(button, "value", buttonText);
+          }
+
+
 
           function setLayerDef(name){
             var trackIdField,
@@ -546,16 +548,12 @@
             featureLayerWorker.setDefinitionExpression(def);
           }
 
-          function highlightWarning(trackId){
-
-          }
-
           function makeWorkerRenderer(){
             var fillcolor = new Color([5, 112, 176, 0.8]),
-            outlinecolor = new Color([255, 255, 255]),
-            outline = new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID, outlinecolor, 1),
-            symbol,
-            obsrenderer;
+              outlinecolor = new Color([255, 255, 255]),
+              outline = new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID, outlinecolor, 1),
+              symbol,
+              obsrenderer;
 
             symbol = new SimpleMarkerSymbol(SimpleMarkerSymbol.STYLE_DIAMOND, 20, outline, fillcolor);
             obsRenderer = new esri.renderer.SimpleRenderer(symbol);
@@ -569,7 +567,7 @@
         <div id="trackStatus" style="padding: 5px; margin: 2px; background-color: #dcdcdc">
           <h3>Feeds</h3>
           <span id="txtWsUrlWorker" style="margin-left: 10px; width:75px"><span value="Workers">Workers</span></span>
-          <span id="txtWsUrlIncident" style="margin-left: 10px; width:75px"><span value="Warnings">Warnings</span></span>
+          <span id="txtWsUrlIncident" style="margin-left: 10px; width:75px"><span value="Warnings">Incidents</span></span>
         </div>
         <div style="padding: 5px; background-color: #dcdcdc; margin: 2px; min-height: 150px">
           <h3 id="workers">Workers</h3>
