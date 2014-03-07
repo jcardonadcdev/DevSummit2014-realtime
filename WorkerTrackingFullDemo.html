@@ -58,7 +58,7 @@
           function addZoneAndHistoricLayers(){
             var mapLayerUrlZones = "http://localhost:6080/arcgis/rest/services/QuarantineRings/MapServer",
               mapLayerZones = new ArcGISDynamicMapServiceLayer(mapLayerUrlZones, {
-                opacity: 0.7
+                opacity: 0.9
               });
 
             mapLayerZones.on("load", function(){
@@ -178,6 +178,7 @@
           function processGraphicAddWorker(g){
             var workerid,
               trackIdField,
+              timeField,
               graphic = g.graphic;
 
 
@@ -201,13 +202,20 @@
 
             //remove graphic that shows old position of worker
             if (trackedIds[workerid].current){
+              //NOTE: This is for demo purposes. Resets worker state if the worker is at the start of the data loop
+              timeField = streamLayerWorker.timeInfo.startTimeField;
+              if (trackedIds[workerid].current.attributes[timeField] > graphic.attributes[timeField]){
+                console.log("Reset worker state!");
+                resetIncidents(workerid);
+              }
+
               streamLayerWorker.remove(trackedIds[workerid].current);
               delete(trackedIds[workerid].current);
             }
 
             //Add label for worker if it does not exist.
             if (! trackedIds[workerid].label){
-              var font = new Font("10pt", Font.STYLE_ITALIC,
+              var font = new Font("10pt", Font.STYLE_NORMAL,
                 Font.VARIANT_NORMAL, Font.WEIGHT_BOLD,"Courier");
               var text = new TextSymbol(workerid, font, new Color([0,0,139]));
               text.setAlign(TextSymbol.ALIGN_START);
@@ -437,7 +445,7 @@
             alertdiv = dojo.create("div", {"id": "alert-" + workerid, "innerHTML": "<p>" + desc + "</p>"});
             tb = dojo.create("input", {type: "button", id: "cmdhistory-" + workerid, "class": "smallButton", value: "Show History"});
 
-            if (alertType === "Urgent"){
+            if (alertType !== "Notification"){
               dojo.place(tb, alertdiv);
               dojo.connect(tb, "onclick", function(){
                 if (dojo.attr(this, "value") === "Clear History"){
@@ -459,6 +467,28 @@
               });
             }
             dojo.place(alertdiv, div1);
+          }
+
+          function resetIncidents(workerid){
+            var w,
+              alertDiv,
+              graphic;
+            if (trackedIds[workerid]){
+              for (w in trackedIds[workerid]){
+                graphic = trackedIds[workerid][w];
+                if (graphic.attributes && graphic.attributes.alertType){
+                  streamLayerIncident.remove(graphic);
+                  delete(trackedIds[workerid][w]);
+                }
+              }
+            }
+
+            alertdiv = dojo.byId("alert-" + workerid);
+            if (alertdiv){
+              dojo.destroy(alertdiv);
+            }
+
+            dojo.replaceClass(workerid, "vehicle");
           }
 
           /*
@@ -505,7 +535,7 @@
               dtEnd,
               strtsStart = null,
               strtsEnd = null;
-            //console.log("In layer def");
+
             if (! streamLayerWorker.timeInfo || ! streamLayerWorker.timeInfo.trackIdField || ! streamLayerWorker.timeInfo.startTimeField){
               return false;
             }
@@ -526,6 +556,10 @@
 
               dtStart = msStart ? new Date(msStart) : null;
               dtEnd = msEnd ? new Date(msEnd) : null;
+
+              if (dtStart && ! dtEnd){
+                dtEnd = new Date(trackedIds[name].current.attributes[timeField]);
+              }
 
               if (dtEnd){
                 strtsEnd = dtEnd.getUTCFullYear() + "-" + (dtEnd.getUTCMonth() + 1) + "-" + dtEnd.getUTCDate()
