@@ -10,10 +10,14 @@
         msgcount = 0;
 
       function connectSocket(){
+        //check if browser supports web sockets
         if ("WebSocket" in window){
           try{
+            //get web socket url and make new WebSocket using url entered in textbox
             var host = document.getElementById("txtSocketHost").value;
             connection = new WebSocket(host);
+
+            //handle web socket's events
             connection.onopen = function(){
               setUI(true);
               addToLog("Opened Web Socket");
@@ -28,13 +32,19 @@
               msgcount = 0;
               addToLog("Error: " + err);
             };
+
+            /* onmessage gets an object that has a data property that contains the actual message.
+             *
+             * The message from GeoEvent processor should be an array of feature JSON
+             */
             connection.onmessage = function(e){
               var msg = JSON.parse(e.data);
               addToLog("Message received: " + JSON.stringify(msg));
             };
           }
+          //if using Internet Explorer and a Security Error is thrown, try using the fully qualified server name in the websocket url
           catch(err){
-            addToLog("Error creating websocket connection");
+            addToLog("Error creating websocket connection: " + err.toString());
           }
         }
         else{
@@ -55,16 +65,17 @@
         msgcount++;
       }
 
+      //change UI to reflect connected or disconnected state
       function setUI(connected){
         document.getElementById("cmdDisconnect").disabled = ! connected;
         document.getElementById("cmdConnect").disabled = connected;
-        document.getElementById("txtSocketHost").style.backgroundColor = connected ? "#00ff00" : "#ff0000";
+        document.getElementById("txtSocketHost").style.backgroundColor = connected ? "#008000" : "#ff0000";
       }
     </script>
   </head>
   <body>
     <div style="width: 100%; position:relative; padding-bottom: 5px">
-      <span>Websocket url: </span><input type="text" value="ws://ursus.esri.com:6180/workerlocations" id="txtSocketHost" style="width: 50%; background-color: #ff0000" /><br/>
+      <span>Websocket url: </span><input type="text" value="ws://localhost:6180/workerlocations" id="txtSocketHost" style="font-size:12pt; width: 50%; background-color: #ffffff" /><br/>
       <input type="button" id="cmdConnect" value="ConnectWS" onclick="connectSocket();"/>
       <input type="button" id="cmdDisconnect" value="DisconnectWS" onclick="disconnectSocket();" disabled="disabled"/>
     </div>

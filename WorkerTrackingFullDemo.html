@@ -11,7 +11,7 @@
         "esri/graphic",
         "esri/layers/StreamLayer",
         "esri/layers/FeatureLayer",
-        "esri/layers/ArcGISDynamicMapServiceLayer",
+        "esri/layers/ArcGISTiledMapServiceLayer",
         "esri/InfoTemplate",
         "esri/symbols/SimpleMarkerSymbol",
         "esri/symbols/PictureMarkerSymbol",
@@ -25,7 +25,7 @@
         "dojo/dom",
         "dojo/on",
         "dojo/domReady!"
-      ], function(Map, TimeExtent, Graphic, StreamLayer, FeatureLayer, ArcGISDynamicMapServiceLayer, InfoTemplate, SimpleMarkerSymbol, PictureMarkerSymbol, TextSymbol, Font, SimpleLineSymbol, SimpleRenderer, ClassBreaksRenderer, UniqueValueRenderer, Color, dom, on){
+      ], function(Map, TimeExtent, Graphic, StreamLayer, FeatureLayer, ArcGISTiledMapServiceLayer, InfoTemplate, SimpleMarkerSymbol, PictureMarkerSymbol, TextSymbol, Font, SimpleLineSymbol, SimpleRenderer, ClassBreaksRenderer, UniqueValueRenderer, Color, dom, on){
 
           var map,
             trackedIds = {},
@@ -56,8 +56,8 @@
            * Adds FeatureLayer to show worker track points and dynamic map layer to show quarantine zones
            */
           function addZoneAndHistoricLayers(){
-            var mapLayerUrlZones = "http://localhost:6080/arcgis/rest/services/QuarantineRings/MapServer",
-              mapLayerZones = new ArcGISDynamicMapServiceLayer(mapLayerUrlZones, {
+            var mapLayerUrlZones = "http://tiles.arcgis.com/tiles/bkrWlSKcjUDFDtgw/arcgis/rest/services/QuarantineRingsMap/MapServer",
+              mapLayerZones = new ArcGISTiledMapServiceLayer(mapLayerUrlZones, {
                 opacity: 0.9
               });
 
@@ -65,7 +65,7 @@
               map.addLayer(mapLayerZones);
             });
 
-            var featureLayerUrlWorker = "http://localhost:6080/arcgis/rest/services/AidWorkersFS/FeatureServer/1";
+            var featureLayerUrlWorker = "http://services.arcgis.com/bkrWlSKcjUDFDtgw/arcgis/rest/services/AidWorkerTracks/FeatureServer/0";
 
             featureLayerWorker = new FeatureLayer(featureLayerUrlWorker, {
               mode: FeatureLayer.MODE_SNAPSHOT
@@ -572,10 +572,12 @@
 
               def = trackIdField + " = '" + name + "'";
               if (strtsStart){
-                def += " AND " + timeField + " > timestamp '" + strtsStart + "'";
+                //def += " AND " + timeField + " > timestamp '" + strtsStart + "'";
+                def += " AND " + timeField + " > '" + strtsStart + "'";
               }
               if (strtsEnd){
-                def += " AND " + timeField + " < timestamp '" + strtsEnd + "'";
+                //def += " AND " + timeField + " < timestamp '" + strtsEnd + "'";
+                def += " AND " + timeField + " < '" + strtsEnd + "'";
               }
             }
 
