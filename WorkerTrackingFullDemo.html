@@ -347,10 +347,10 @@
 
             var alertRenderer = new UniqueValueRenderer(alertRendererJson);
 
-            var marker = new PictureMarkerSymbol("assets/demo_biohazard_yellow.jpg",20,20);
+            var marker = new PictureMarkerSymbol("images/demo_biohazard_yellow.jpg",20,20);
             alertRenderer.addValue("Urgent", marker);
 
-            marker = new PictureMarkerSymbol("assets/demo_biohazard_red.gif",20,20);
+            marker = new PictureMarkerSymbol("images/demo_biohazard_red.gif",20,20);
             alertRenderer.addValue("Warning", marker);
 
             streamLayerIncident.setRenderer( alertRenderer );
