@@ -7,7 +7,6 @@ More information on GeoEvent Processor can be found at http://pro.arcgis.com/sha
 
 ## Requirements
 - ArcGIS GeoEvent Processor for Server
-- The GeoEvent Simulator application
 - Browser that supports web sockets. Check by going to http://www.websocket.org/ or by looking for the browser version at http://caniuse.com/websockets.
 
 ## Setup
@@ -16,7 +15,7 @@ More information on GeoEvent Processor can be found at http://pro.arcgis.com/sha
     - Open GeoEvent Processor Manager application (https://geoeventprocessor_host:6143/geoevent/manager).
     - Go to the "Site" tab and click on "Configuration Store" on the left panel.
     - Click "Import Configuration" to open up an import dialog.
-    - Click the "Choss file" button and select the "data/GeoEventConfig.xml" file.
+    - Click the "Choose file" button and select the "data/GeoEventConfig.xml" file.
     - This should import:
         - A GeoEvent Definition named "FieldWorker"
         - A GeoEvent Service named "worker-incident-service"
