@@ -39,15 +39,13 @@ More information on GeoEvent Processor can be found at http://pro.arcgis.com/sha
 ### Using Python script
 - Open a command prompt or terminal window
 - Navigate to the scripts directory that is in the repository
-- Run "socket_feeder.py -h" to see the arguments for the script. They are:
-    - Mandatory
-        - Path to the simulated data file. The data is in "../data/WorkerSimulation.csv"
-        - TCP Socket port to connect to. If you imported the GeoEventConfig.xml file that came with the repository, the port is 5565.
-    - Optional
-        - -i interval between messages in milliseconds. The default is 100
-        - -n name of the machine to connect to. The default is "localhost"
-        - -s flag to skip the first line of the data file. The default is True
-        - -l flag to loop continuously through the data. The default is False
+- Run "socket_feeder.py -h" to see the arguments for the script. All arguments are optional. They are:
+    - -d Path to the simulated data file. The default is "../data/WorkerSimulation.csv"
+    - -p TCP Socket port to connect to. The default is 5565.
+    - -i interval between messages in milliseconds. The default is 100
+    - -n name of the machine to connect to. The default is "localhost"
+    - -s flag to skip the first line of the data file. The default is True
+    - -l flag to loop continuously through the data. The default is False
 
 ## Using the websites
 
