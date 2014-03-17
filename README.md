@@ -26,6 +26,7 @@ More information on GeoEvent Processor can be found at http://pro.arcgis.com/sha
     -NOTE: The directory must be accessible by url, so it must be in a virtual directory. If you do not have access to a web server, you can copy the files to GeoEvent Processor's "assets" directory and access the web pages by using http://host:6180/geoevent/assets.
 
 ## Running the simulator
+### Using GeoEvent Processor Simulator Application
 - Open the GeoEvent Simulator application
 - Browse to the file "data\WorkerSimulation.csv"
 - Click the Checkbox labeled "Skip the First" to skip the first line
@@ -34,6 +35,19 @@ More information on GeoEvent Processor can be found at http://pro.arcgis.com/sha
 - Set the message rate to be 1 message per 100 ms
 - Click the play button to start the simulation
 - Check the GeoEvent Processor Manager's Monitor tab to make sure data is flowing through the system
+
+### Using Python script
+- Open a command prompt or terminal window
+- Navigate to the scripts directory that is in the repository
+- Run "socket_feeder.py -h" to see the arguments for the script. They are:
+    - Mandatory
+        - Path to the simulated data file. The data is in "../data/WorkerSimulation.csv"
+        - TCP Socket port to connect to. If you imported the GeoEventConfig.xml file that came with the repository, the port is 5565.
+    - Optional
+        - -i interval between messages in milliseconds. The default is 100
+        - -n name of the machine to connect to. The default is "localhost"
+        - -s flag to skip the first line of the data file. The default is True
+        - -l flag to loop continuously through the data. The default is False
 
 ## Using the websites
 
@@ -55,6 +69,3 @@ If the simulator is started, points should appear on the map and labels for each
 - Click on the "Identify Worker" button to show a halo around the worker's location point.
 - When an incident is detected (a worker has entered/exited one of the red areas) you can click on the "Show History" button to show the locations where the worker has traveled.
 
-## Coming soon
-
-A python script that feeds simulated data to GeoEvent Processor so people on non-Windows machines can simulate the data feed.
